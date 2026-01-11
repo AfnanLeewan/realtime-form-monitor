@@ -1,27 +1,64 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { PatientFormData, initialFormData } from '@/types/patient';
+import { debounce } from '@/lib/utils';
 
 export default function PatientForm() {
   const [formData, setFormData] = useState<PatientFormData>(initialFormData);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const patientIdRef = useRef(`patient_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+  const sendPatientUpdate = async (data: PatientFormData, status: 'filling' | 'submitted' | 'inactive', customId?: string) => {
+    try {
+      await fetch('/api/patient-update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          patientData: {
+            id: customId || patientIdRef.current,
+            ...data,
+            status,
+          },
+          status,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to send update:', error);
+    }
+  };
+
+  const debouncedUpdate = useRef(
+    debounce((data: PatientFormData) => {
+      sendPatientUpdate(data, 'filling');
+    }, 500)
+  ).current;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
+    const updatedData = {
+      ...formData,
       [name]: value
-    }));
+    };
+    
+    setFormData(updatedData);
+    
+    debouncedUpdate(updatedData);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
+    await sendPatientUpdate(formData, 'submitted');
+
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    console.log('Form submitted:', formData);    
+    console.log('Form submitted:', formData);
+    
+    patientIdRef.current = `patient_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     setFormData(initialFormData);
     setIsSubmitting(false);
   };
